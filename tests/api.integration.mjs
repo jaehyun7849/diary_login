@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {summarize} from '../lib/metrics.mjs';
+const base=process.env.TEST_URL||'http://127.0.0.1:5173';if(!/^http:\/\/127\.0\.0\.1:/.test(base))throw Error('Tests only allowed on local DB');
+const post=async b=>{const r=await fetch(base+'/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});assert.equal(r.status,200,await r.text());};
+const get=async()=>await(await fetch(base+'/api/data')).json();
+const id=crypto.randomUUID();
+const p={action:'plan',id,title:'검증 전용 계획',start:'2026-10-01',end:'2026-10-31',priority:'보통',success:'검증',estimate:120,improvement:'',starter:true};
+await post(p);let d=await get();assert.equal(d.tasks.filter(t=>t.plan_id===id).length,5);
+await post({...p,title:'검증 수정 계획',version:1});d=await get();assert.equal(JSON.parse(d.revisions.find(r=>r.plan_id===id).snapshot).title,p.title);assert.equal(d.plans.find(x=>x.id===id).version,2);
+const t=d.tasks.find(x=>x.plan_id===id);const done={action:'done',id:t.id,done:true};await Promise.all([post(done),post(done)]);d=await get();assert.equal(d.completions.filter(c=>c.task_id===t.id).length,1);assert.equal(summarize(d,id,'','','2026-10-12').done.length,1);
+const l={action:'log',id:crypto.randomUUID(),task_id:t.id,start:'2026-10-10T18:00:00+09:00',end:'2026-10-10T18:20:00+09:00',minutes:20,note:'<script>window.__xss=true</script>',blocker:'검증 이유'};await Promise.all([post(l),post(l)]);d=await get();assert.equal(d.logs.filter(x=>x.id===l.id).length,1);assert.equal(d.logs.find(x=>x.id===l.id).start,'2026-10-10T09:00:00.000Z');assert.equal(d.plans.find(x=>x.id===id).estimate,120);
+await post({...done,done:false});d=await get();assert.equal(d.completions.filter(c=>c.task_id===t.id).length,0);assert.equal(summarize(d,id,'','','2026-10-12').done.length,0);
+const next=crypto.randomUUID();await post({action:'review',id:crypto.randomUUID(),plan_id:id,start:p.start,end:p.end,note:'검증',improvement:'운동 시간 조정',next_id:next,next_title:'검증 다음 계획',next_start:'2026-11-01',next_end:'2026-11-14'});d=await get();assert.equal(d.plans.find(x=>x.id===next).improvement,'운동 시간 조정');assert(d.reviews.some(x=>x.next_plan_id===next));
+await post({action:'delete',id:t.id});d=await get();assert.equal(summarize(d,id,'','','2026-10-12').tasks.length,4);assert(d.logs.some(x=>x.id===l.id));assert.deepEqual(d,await get());
+const bad=await fetch(base+'/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...p,id:crypto.randomUUID(),start:'2026-02-31'})});assert.equal(bad.status,400);
+console.log('PASS: server DB persistence, history, concurrent double completion, completion undo, idempotent log, UTC conversion, immutable plan, review carry-forward, soft delete, invalid dates. Local test data only.');

@@ -1,0 +1,19 @@
+{
+  "version": 3,
+  "extends": "pds-schema-v2.json",
+  "t06Commit": "704893d03fd11c581da6ecc192192a5458679add",
+  "tables": {
+    "users": {"id":"UUID primary key","username":"normalized lowercase unique 4-32 chars [a-z0-9_]","password_hash":"bcrypt cost12 unique salt; never exported","auth_version":"integer starts1","created":"UTC ISO8601"},
+    "sessions":{"token_hash":"SHA256 of random256bit session primary key; never exported","user_id":"users.id FK cascade","version":"must equal user.auth_version","expires":"created+24h UTC","created":"UTC ISO8601"},
+    "plans.owner_id":"nullable users.id FK; null legacy plans quarantined, no public access; new plans always use session user",
+    "auth_attempts":{"key":"SHA256(scope+IP or normalized username+15min bucket)","count":"attempt count","expires":"UTC ISO8601"},
+    "experiments":{"id":"UUID PK","user_id":"unique users.id FK cascade","question":"fixed at start","metric":"하루 실제 운동 시간","unit":"분","rules":"fixed JSON","initial_rule":"text","changed_rule":"text nullable; once after2 before3","changed_at":"UTC timestamp nullable","reason":"text nullable","created":"UTC"},
+    "experiment_days":{"id":"UUID PK","experiment_id":"experiments.id FK cascade","day_index":"1..5; unique per experiment","date":"actual Seoul today; unique per experiment","minutes":"integer0..1440","note":"text","outlier_confirmed":"boolean integer; required if minutes>180","created":"UTC timestamp"}
+  },
+  "authorization":"server session identity only; every parent/child read and write checks plans.owner_id; client owner identifiers ignored; anonymous401; foreign404",
+  "cookie":"production __Host-move_session, Secure HttpOnly SameSite=Lax Path=/ Max-Age=86400; token not in URL or browser JS",
+  "revocation":"logout deletes current session; password change increases auth_version and deletes all sessions; deletion removes account and all personal records",
+  "observation":"exactly five distinct actual Seoul dates; no backfill; no fictitious actual data; after second entry before third change one plan rule; fixed metric/unit/calculation",
+  "legacyMigration":"production had zero rows in all T06 tables when checked; user confirmed no data; no first-signup auto-claim",
+  "export":"own diary + own observation only; never password_hash, sessions or auth_attempts"
+}
