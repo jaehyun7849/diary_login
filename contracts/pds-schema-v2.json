@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 2,
+  "database": "Cloudflare D1 (SQLite), server persisted",
+  "tables": {
+    "plans": {"pk":"id","fields":{"id":"text UUID","title":"text","start":"YYYY-MM-DD","end":"YYYY-MM-DD","priority":"높음|보통|낮음","success":"text","estimate":"integer minutes >=0","improvement":"text","created":"UTC ISO8601","version":"integer >=1"}},
+    "revisions":{"pk":"id","fields":{"id":"UUID","plan_id":"plans.id FK","snapshot":"JSON of entire previous plans row","created":"UTC ISO8601"}},
+    "tasks":{"pk":"id","fields":{"id":"UUID","plan_id":"plans.id FK","title":"text","due":"YYYY-MM-DD","priority":"높음|보통|낮음","tag":"text","estimate":"integer minutes >=0","done":"0|1","deleted":"0|1 soft delete","created":"UTC ISO8601"}},
+    "logs":{"pk":"id (request idempotency key)","fields":{"id":"UUID","task_id":"tasks.id FK","start":"UTC ISO8601","end":"UTC ISO8601","minutes":"integer active minutes >=0; rest may be excluded","note":"text","blocker":"text","created":"UTC ISO8601"}},
+    "completions":{"pk":"task_id (one current completion per task)","fields":{"task_id":"tasks.id FK UNIQUE","created":"UTC ISO8601"}},
+    "reviews":{"pk":"id (request idempotency key)","fields":{"id":"UUID","plan_id":"plans.id FK","start":"YYYY-MM-DD inclusive","end":"YYYY-MM-DD inclusive","note":"text","improvement":"text copied to next plan","next_plan_id":"plans.id FK","created":"UTC ISO8601"}}
+  },
+  "dateRules":{"displayTimezone":"Asia/Seoul","timestamps":"Client inputs explicitly offset +09:00; persisted UTC; rendered Asia/Seoul","calendarDates":"date-only strings; no timezone conversion","period":"filter task.due inclusive; all logs belonging to included tasks count","late":"!done AND task.due < Seoul today","timeUnit":"minute"},
+  "aggregation":{"planCount":"nondeleted tasks in selected plan and due-date period","completed":"those tasks with done=1","blocked":"distinct included tasks with one or more nonblank logs.blocker","expected":"sum included tasks.estimate","actual":"sum all logs.minutes for included tasks","difference":"actual - expected","empty":"0"},
+  "consistency":{"planEdit":"optimistic version check and previous snapshot insert + update in atomic D1 batch","completion":"explicit desired boolean state; UPDATE plus INSERT ON CONFLICT DO NOTHING or DELETE in atomic batch; task_id PK prevents double count","logRetry":"same log UUID reused on retry; ON CONFLICT DO NOTHING","review":"next plan and review persisted in atomic batch with stable UUIDs","delete":"soft delete task; excluded from statistics, retained with related logs in export","sorting":"selected field, then created ASC, then id ASC"},
+  "security":{"queries":"bound SQL parameters","rendering":"React text escaping; no dangerouslySetInnerHTML","secrets":"none in application; DB binding is server-only","auth":"no application login; public shared data"}
+}
